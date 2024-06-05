@@ -133,7 +133,8 @@ impl<'de> Deserialize<'de> for PubSubItem {
                     return Err(de::Error::missing_field("jsonrpc"));
                 }
 
-                match (id, result, error, method, params) {
+                // match (id, result, error, method, params) {
+                match (id, result.clone(), error.clone(), method.clone(), params.clone()) {
                     (Some(id), Some(result), None, None, None) => {
                         Ok(PubSubItem::Success { id: id.to_string(), result })
                     }
@@ -146,9 +147,9 @@ impl<'de> Deserialize<'de> for PubSubItem {
                     (None, None, None, Some(_), Some(params)) => {
                         Ok(PubSubItem::Notification { params })
                     }
-                    _ => Err(de::Error::custom(
-                        "response must be either a success/error or notification object",
-                    )),
+                    _ => Err(de::Error::custom(format!(
+                        "response must be either a success/error or notification object {id:?} {result:?} {error:?} {method:?} {params:?}"
+                    ))),
                 }
             }
         }
