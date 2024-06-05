@@ -1064,7 +1064,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     {
         let id: String = self.request("eth_subscribe", params).await?;
         println!("subscribe id {id:?}");
-        SubscriptionStream::new(U256::one(), self).map_err(Into::into)
+        SubscriptionStream::new(U256::zero(), self).map_err(Into::into)
     }
 
     async fn unsubscribe<T>(&self, id: T) -> Result<bool, ProviderError>
