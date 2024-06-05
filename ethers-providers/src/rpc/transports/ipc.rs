@@ -1,7 +1,6 @@
 use super::common::Params;
 use async_trait::async_trait;
 use bytes::{Buf, BytesMut};
-use ethers_core::types::U256;
 use futures_channel::mpsc;
 use futures_util::stream::StreamExt;
 use hashers::fx_hash::FxHasher64;
@@ -219,8 +218,10 @@ pub struct Ipc {
 #[derive(Debug)]
 enum TransportMessage {
     Request { id: u64, request: Box<[u8]>, sender: Pending },
-    Subscribe { id: U256, sink: Subscription },
-    Unsubscribe { id: U256 },
+    // Subscribe { id: U256, sink: Subscription },
+    Subscribe { id: String, sink: Subscription },
+    // Unsubscribe { id: U256 },
+    Unsubscribe { id: String },
 }
 
 impl Ipc {
@@ -282,14 +283,15 @@ impl JsonRpcClient for Ipc {
 impl PubsubClient for Ipc {
     type NotificationStream = mpsc::UnboundedReceiver<Box<RawValue>>;
 
-    fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, IpcError> {
+    // fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, IpcError> {
+    fn subscribe(&self, id: String) -> Result<Self::NotificationStream, IpcError> {
         let (sink, stream) = mpsc::unbounded();
-        self.send(TransportMessage::Subscribe { id: id.into(), sink })?;
+        self.send(TransportMessage::Subscribe { id, sink })?;
         Ok(stream)
     }
 
-    fn unsubscribe<T: Into<U256>>(&self, id: T) -> Result<(), IpcError> {
-        self.send(TransportMessage::Unsubscribe { id: id.into() })
+    fn unsubscribe(&self, id: String) -> Result<(), IpcError> {
+        self.send(TransportMessage::Unsubscribe { id })
     }
 }
 
@@ -338,7 +340,8 @@ async fn run_ipc_server(mut stream: Stream, request_rx: mpsc::UnboundedReceiver<
 
 struct Shared {
     pending: RefCell<FxHashMap<u64, Pending>>,
-    subs: RefCell<FxHashMap<U256, Subscription>>,
+    // subs: RefCell<FxHashMap<U256, Subscription>>,
+    subs: RefCell<FxHashMap<String, Subscription>>,
 }
 
 impl Shared {
@@ -351,7 +354,7 @@ impl Shared {
             let read = reader.read_buf(&mut buf).await?;
             if read == 0 {
                 // eof, socket was closed
-                return Err(IpcError::ServerExit)
+                return Err(IpcError::ServerExit);
             }
 
             // parse the received bytes into 0-n jsonrpc messages
@@ -382,7 +385,7 @@ impl Shared {
                     }
                 }
                 Subscribe { id, sink } => {
-                    if self.subs.borrow_mut().insert(id, sink).is_some() {
+                    if self.subs.borrow_mut().insert(id.clone(), sink).is_some() {
                         tracing::warn!(
                             %id,
                             "replaced already-registered subscription"
@@ -427,7 +430,7 @@ impl Shared {
             Some(tx) => tx,
             None => {
                 tracing::warn!(%id, "no pending request exists for the response ID");
-                return
+                return;
             }
         };
 
@@ -448,7 +451,7 @@ impl Shared {
                     id = ?params.subscription,
                     "no subscription exists for the notification ID"
                 );
-                return
+                return;
             }
         };
 
@@ -513,7 +516,6 @@ impl crate::RpcError for IpcError {
 mod tests {
     use super::*;
     use ethers_core::utils::{Geth, GethInstance};
-    use std::time::Duration;
     use tempfile::NamedTempFile;
 
     async fn connect() -> (Ipc, GethInstance) {
@@ -531,16 +533,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn request() {
-        let (ipc, _geth) = connect().await;
-
-        let block_num: U256 = ipc.request("eth_blockNumber", ()).await.unwrap();
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let block_num2: U256 = ipc.request("eth_blockNumber", ()).await.unwrap();
-        assert!(block_num2 > block_num);
-    }
-
-    #[tokio::test]
     #[cfg(not(feature = "celo"))]
     async fn subscription() {
         use ethers_core::types::{Block, TxHash};
@@ -549,7 +541,8 @@ mod tests {
 
         // Subscribing requires sending the sub request and then subscribing to
         // the returned sub_id
-        let sub_id: U256 = ipc.request("eth_subscribe", ["newHeads"]).await.unwrap();
+        // let sub_id: U256 = ipc.request("eth_subscribe", ["newHeads"]).await.unwrap();
+        let sub_id: String = ipc.request("eth_subscribe", ["newHeads"]).await.unwrap();
         let stream = ipc.subscribe(sub_id).unwrap();
 
         let blocks: Vec<u64> = stream

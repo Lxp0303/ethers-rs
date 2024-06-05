@@ -146,7 +146,11 @@ where
             .watch(&self.filter)
             .await
             .map_err(ContractError::from_middleware_error)?;
-        Ok(EventStream::new(filter.id, filter, Box::new(move |log| Ok(parse_log(log)?))))
+        Ok(EventStream::new(
+            filter.id.to_string(),
+            filter,
+            Box::new(move |log| Ok(parse_log(log)?)),
+        ))
     }
 
     /// As [`Self::stream`], but does not discard [`Log`] metadata.
@@ -164,7 +168,7 @@ where
             .await
             .map_err(ContractError::from_middleware_error)?;
         Ok(EventStream::new(
-            filter.id,
+            filter.id.to_string(),
             filter,
             Box::new(move |log| {
                 let meta = LogMeta::from(&log);
@@ -197,7 +201,7 @@ where
             .subscribe_logs(&self.filter)
             .await
             .map_err(ContractError::from_middleware_error)?;
-        Ok(EventStream::new(filter.id, filter, Box::new(move |log| Ok(parse_log(log)?))))
+        Ok(EventStream::new(filter.id.clone(), filter, Box::new(move |log| Ok(parse_log(log)?))))
     }
 
     /// As [`Self::subscribe`], but includes event metadata
@@ -215,7 +219,7 @@ where
             .await
             .map_err(ContractError::from_middleware_error)?;
         Ok(EventStream::new(
-            filter.id,
+            filter.id.clone(),
             filter,
             Box::new(move |log| {
                 let meta = LogMeta::from(&log);

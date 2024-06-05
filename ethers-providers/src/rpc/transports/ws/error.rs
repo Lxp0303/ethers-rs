@@ -1,4 +1,4 @@
-use ethers_core::types::U256;
+// use ethers_core::types::U256;
 
 use crate::{JsonRpcError, ProviderError};
 
@@ -32,7 +32,8 @@ pub enum WsClientError {
 
     /// PubSubClient asked to listen to an unknown subscription id
     #[error("Attempted to listen to unknown subscription: {0:?}")]
-    UnknownSubscription(U256),
+    // UnknownSubscription(U256),
+    UnknownSubscription(String),
 
     /// Too Many Reconnects
     #[error("Reconnect limit reached")]

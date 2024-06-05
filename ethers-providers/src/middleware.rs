@@ -899,9 +899,10 @@ pub trait Middleware: Sync + Send + Debug {
     /// This method is hidden as subscription lifecycles are intended to be
     /// handled by a [`SubscriptionStream`] object
     #[doc(hidden)]
-    async fn unsubscribe<T>(&self, id: T) -> Result<bool, Self::Error>
+    // async fn unsubscribe<T>(&self, id: T) -> Result<bool, Self::Error>
+    async fn unsubscribe(&self, id: String) -> Result<bool, Self::Error>
     where
-        T: Into<U256> + Send + Sync,
+        // T: Into<U256> + Send + Sync,
         <Self as Middleware>::Provider: PubsubClient,
     {
         self.inner().unsubscribe(id).await.map_err(MiddlewareError::from_err)

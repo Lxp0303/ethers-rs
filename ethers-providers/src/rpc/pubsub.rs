@@ -1,5 +1,5 @@
 use crate::{JsonRpcClient, Middleware, Provider};
-use ethers_core::types::U256;
+// use ethers_core::types::U256;
 use futures_util::stream::Stream;
 use pin_project::{pin_project, pinned_drop};
 use serde::de::DeserializeOwned;
@@ -18,10 +18,12 @@ pub trait PubsubClient: JsonRpcClient {
     type NotificationStream: futures_core::Stream<Item = Box<RawValue>> + Send + Unpin;
 
     /// Add a subscription to this transport
-    fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, Self::Error>;
+    // fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, Self::Error>;
+    fn subscribe(&self, id: String) -> Result<Self::NotificationStream, Self::Error>;
 
     /// Remove a subscription from this transport
-    fn unsubscribe<T: Into<U256>>(&self, id: T) -> Result<(), Self::Error>;
+    // fn unsubscribe<T: Into<U256>>(&self, id: T) -> Result<(), Self::Error>;
+    fn unsubscribe(&self, id: String) -> Result<(), Self::Error>;
 }
 
 #[must_use = "subscriptions do nothing unless you stream them"]
@@ -29,7 +31,8 @@ pub trait PubsubClient: JsonRpcClient {
 /// Streams data from an installed filter via `eth_subscribe`
 pub struct SubscriptionStream<'a, P: PubsubClient, R: DeserializeOwned> {
     /// The subscription's installed id on the ethereum node
-    pub id: U256,
+    // pub id: U256,
+    pub id: String,
 
     loaded_elements: VecDeque<R>,
 
@@ -53,15 +56,16 @@ where
     /// Instantiating this directly with a known ID will likely cause any
     /// existing streams with that ID to end. To avoid this, start a new stream
     /// using [`Provider::subscribe`] instead of `SubscriptionStream::new`.
-    pub fn new(id: U256, provider: &'a Provider<P>) -> Result<Self, P::Error> {
+    // pub fn new(id: U256, provider: &'a Provider<P>) -> Result<Self, P::Error> {
+    pub fn new(id: String, provider: &'a Provider<P>) -> Result<Self, P::Error> {
         // Call the underlying PubsubClient's subscribe
-        let rx = provider.as_ref().subscribe(id)?;
+        let rx = provider.as_ref().subscribe(id.clone())?;
         Ok(Self { id, provider, rx, ret: PhantomData, loaded_elements: VecDeque::new() })
     }
 
     /// Unsubscribes from the subscription.
     pub async fn unsubscribe(&self) -> Result<bool, crate::ProviderError> {
-        self.provider.unsubscribe(self.id).await
+        self.provider.unsubscribe(self.id.clone()).await
     }
 
     /// Set the loaded elements buffer. This buffer contains logs waiting for
@@ -89,7 +93,7 @@ where
     fn poll_next(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
         if !self.loaded_elements.is_empty() {
             let next_element = self.get_mut().loaded_elements.pop_front();
-            return Poll::Ready(next_element)
+            return Poll::Ready(next_element);
         }
 
         let mut this = self.project();
@@ -99,11 +103,11 @@ where
                     Ok(res) => Poll::Ready(Some(res)),
                     Err(err) => {
                         error!("failed to deserialize item {:?}", err);
-                        continue
+                        continue;
                     }
                 },
                 None => Poll::Ready(None),
-            }
+            };
         }
     }
 }
@@ -118,6 +122,6 @@ where
         // on drop it removes the handler from the websocket so that it stops
         // getting populated. We need to call `unsubscribe` explicitly to cancel
         // the subscription
-        let _ = (*self.provider).as_ref().unsubscribe(self.id);
+        let _ = (*self.provider).as_ref().unsubscribe(self.id.clone());
     }
 }

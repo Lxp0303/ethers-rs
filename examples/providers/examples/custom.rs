@@ -116,7 +116,7 @@ impl PubsubClient for WsOrIpc {
     // similar to the error type.
     type NotificationStream = <Ws as PubsubClient>::NotificationStream;
 
-    fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, Self::Error> {
+    fn subscribe(&self, id: String) -> Result<Self::NotificationStream, Self::Error> {
         let stream = match self {
             Self::Ws(ws) => PubsubClient::subscribe(ws, id)?,
             Self::Ipc(ipc) => PubsubClient::subscribe(ipc, id)?,
@@ -124,7 +124,7 @@ impl PubsubClient for WsOrIpc {
         Ok(stream)
     }
 
-    fn unsubscribe<T: Into<U256>>(&self, id: T) -> Result<(), Self::Error> {
+    fn unsubscribe(&self, id: String) -> Result<(), Self::Error> {
         match self {
             Self::Ws(ws) => PubsubClient::unsubscribe(ws, id)?,
             Self::Ipc(ipc) => PubsubClient::unsubscribe(ipc, id)?,

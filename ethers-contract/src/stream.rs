@@ -2,7 +2,7 @@
 //! events
 
 use crate::LogMeta;
-use ethers_core::types::{Log, U256};
+use ethers_core::types::Log;
 use futures_util::{
     future::Either,
     stream::{Stream, StreamExt},
@@ -23,7 +23,8 @@ type MapEvent<'a, R, E> = Box<dyn Fn(Log) -> Result<R, E> + 'a + Send + Sync>;
 /// information about the filter/subscription's id.
 pub struct EventStream<'a, T, R, E> {
     /// The stream ID, provided by the RPC server
-    pub id: U256,
+    // pub id: U256,
+    pub id: String,
     #[pin]
     stream: T,
     parse: MapEvent<'a, R, E>,
@@ -40,7 +41,8 @@ impl<'a, T, R, E> EventStream<'a, T, R, E> {
     /// Instantiate a new `EventStream`
     ///
     /// Typically users should not call this directly
-    pub fn new(id: U256, stream: T, parse: MapEvent<'a, R, E>) -> Self {
+    // pub fn new(id: U256, stream: T, parse: MapEvent<'a, R, E>) -> Self {
+    pub fn new(id: String, stream: T, parse: MapEvent<'a, R, E>) -> Self {
         Self { id, stream, parse }
     }
 }

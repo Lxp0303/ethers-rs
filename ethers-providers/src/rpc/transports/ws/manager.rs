@@ -6,7 +6,6 @@ use super::{
     WsClient, WsClientError,
 };
 use crate::JsonRpcError;
-use ethers_core::types::U256;
 use futures_channel::{mpsc, oneshot};
 use futures_util::{select_biased, StreamExt};
 use serde_json::value::{to_raw_value, RawValue};
@@ -18,7 +17,8 @@ use std::{
     },
 };
 
-pub type SharedChannelMap = Arc<Mutex<HashMap<U256, mpsc::UnboundedReceiver<Box<RawValue>>>>>;
+// pub type SharedChannelMap = Arc<Mutex<HashMap<U256, mpsc::UnboundedReceiver<Box<RawValue>>>>>;
+pub type SharedChannelMap = Arc<Mutex<HashMap<String, mpsc::UnboundedReceiver<Box<RawValue>>>>>;
 
 pub const DEFAULT_RECONNECTS: usize = 5;
 
@@ -30,9 +30,11 @@ pub const DEFAULT_RECONNECTS: usize = 5;
 /// reconnections
 pub struct SubscriptionManager {
     // Active subs indexed by request id
-    subs: BTreeMap<u64, ActiveSub>,
+    // subs: BTreeMap<u64, ActiveSub>,
+    subs: BTreeMap<String, ActiveSub>,
     // Maps active server-side IDs to local subscription IDs
-    aliases: HashMap<U256, u64>,
+    // aliases: HashMap<U256, u64>,
+    aliases: HashMap<String, String>,
     // Used to share notification channels with the WsClient(s)
     channel_map: SharedChannelMap,
 }
@@ -46,14 +48,15 @@ impl SubscriptionManager {
         self.subs.len()
     }
 
-    fn add_alias(&mut self, sub: U256, id: u64) {
+    // fn add_alias(&mut self, sub: U256, id: u64) {
+    fn add_alias(&mut self, sub: String, id: String) {
         if let Some(entry) = self.subs.get_mut(&id) {
-            entry.current_server_id = Some(sub);
+            entry.current_server_id = Some(sub.clone());
         }
         self.aliases.insert(sub, id);
     }
 
-    fn remove_alias(&mut self, server_id: U256) {
+    fn remove_alias(&mut self, server_id: String) {
         if let Some(id) = self.aliases.get(&server_id) {
             if let Some(sub) = self.subs.get_mut(id) {
                 sub.current_server_id = None;
@@ -63,11 +66,12 @@ impl SubscriptionManager {
     }
 
     #[tracing::instrument(skip(self))]
-    fn end_subscription(&mut self, id: u64) -> Option<Box<RawValue>> {
+    // fn end_subscription(&mut self, id: u64) -> Option<Box<RawValue>> {
+    fn end_subscription(&mut self, id: String) -> Option<Box<RawValue>> {
         if let Some(sub) = self.subs.remove(&id) {
             if let Some(server_id) = sub.current_server_id {
-                tracing::debug!(server_id = format!("0x{server_id:x}"), "Ending subscription");
-                self.remove_alias(server_id);
+                // tracing::debug!(server_id = format!("0x{server_id:x}"), "Ending subscription");
+                self.remove_alias(server_id.clone());
                 // drop the receiver as we don't need the result
                 let (channel, _) = oneshot::channel();
                 // Serialization errors are ignored, and result in the request
@@ -79,7 +83,8 @@ impl SubscriptionManager {
                     channel,
                 };
                 // reuse the RPC ID. this is somewhat dirty.
-                return unsub_request.serialize_raw(id).ok()
+                // return unsub_request.serialize_raw(id).ok();
+                return unsub_request.serialize_raw(1).ok();
             }
             tracing::trace!("No current server id");
         }
@@ -92,21 +97,23 @@ impl SubscriptionManager {
         let server_id = notification.subscription;
 
         // If no alias, just return
-        let id_opt = self.aliases.get(&server_id).copied();
+        // let id_opt = self.aliases.get(&server_id).copied();
+        let id_opt = self.aliases.get(&server_id.clone());
         if id_opt.is_none() {
-            tracing::debug!(
-                server_id = format!("0x{server_id:x}"),
-                "No aliased subscription found"
-            );
-            return
+            // tracing::debug!(
+            //     server_id = format!("0x{server_id:x}"),
+            //     "No aliased subscription found"
+            // );
+            return;
         }
         let id = id_opt.unwrap();
 
         // alias exists, or should be dropped from alias table
-        let sub_opt = self.subs.get(&id);
+        // let sub_opt = self.subs.get(&id);
+        let sub_opt = self.subs.get(id);
         if sub_opt.is_none() {
             tracing::trace!(id, "Aliased subscription found, but not active");
-            self.aliases.remove(&server_id);
+            // self.aliases.remove(&server_id);
         }
         let active = sub_opt.unwrap();
 
@@ -118,45 +125,53 @@ impl SubscriptionManager {
         if send_res.is_err() {
             tracing::debug!(id, "Listener dropped. Dropping alias and subs");
             // TODO: end subcription here?
-            self.aliases.remove(&server_id);
-            self.subs.remove(&id);
+            // self.aliases.remove(&server_id);
+            // self.subs.remove(&id);
+            self.subs.remove(id);
         }
     }
 
-    fn req_success(&mut self, id: u64, result: Box<RawValue>) -> Box<RawValue> {
+    // fn req_success(&mut self, id: u64, result: Box<RawValue>) -> Box<RawValue> {
+    fn req_success(&mut self, id: String, result: Box<RawValue>) -> Box<RawValue> {
         if let Ok(server_id) = serde_json::from_str::<SubId>(result.get()) {
             tracing::debug!(id, server_id = %server_id.0, "Registering new sub alias");
-            self.add_alias(server_id.0, id);
-            let result = U256::from(id);
-            to_raw_value(&format!("0x{result:x}")).expect("valid json")
+            self.add_alias(server_id.0, id.clone());
+            // let result = U256::from(id);
+            // to_raw_value(&format!("0x{result:x}")).expect("valid json")
+            to_raw_value(&id).expect("valid json")
         } else {
             result
         }
     }
 
-    fn has(&self, id: u64) -> bool {
+    // fn has(&self, id: u64) -> bool {
+    fn has(&self, id: String) -> bool {
         self.subs.contains_key(&id)
     }
 
-    fn to_reissue(&self) -> impl Iterator<Item = (&u64, &ActiveSub)> {
+    // fn to_reissue(&self) -> impl Iterator<Item = (&u64, &ActiveSub)> {
+    fn to_reissue(&self) -> impl Iterator<Item = (&String, &ActiveSub)> {
         self.subs.iter()
     }
 
     fn service_subscription_request(
         &mut self,
-        id: u64,
+        // id: u64,
+        id: String,
         params: Box<RawValue>,
     ) -> Result<Box<RawValue>, WsClientError> {
         let (tx, rx) = mpsc::unbounded();
 
         let active_sub = ActiveSub { params, channel: tx, current_server_id: None };
-        let req = active_sub.serialize_raw(id)?;
+        // let req = active_sub.serialize_raw(id)?;
+        let req = active_sub.serialize_raw(1)?;
 
         // Explicit scope for the lock
         // This insertion should be made BEFORE the request returns.
         // So we make it before the request is even dispatched :)
         {
-            self.channel_map.lock().unwrap().insert(id.into(), rx);
+            // self.channel_map.lock().unwrap().insert(id.into(), rx);
+            self.channel_map.lock().unwrap().insert(id.clone(), rx);
         }
         self.subs.insert(id, active_sub);
 
@@ -193,7 +208,8 @@ pub struct RequestManager {
     // Subscription manager
     subs: SubscriptionManager,
     // Requests for which a response has not been receivedc
-    reqs: BTreeMap<u64, InFlight>,
+    // reqs: BTreeMap<u64, InFlight>,
+    reqs: BTreeMap<String, InFlight>,
     // Control of the active WS backend
     backend: BackendDriver,
     // The URL and optional auth info for the connection
@@ -343,7 +359,7 @@ impl RequestManager {
 
     async fn reconnect(&mut self) -> Result<(), WsClientError> {
         if self.reconnects == 0 {
-            return Err(WsClientError::TooManyReconnects)
+            return Err(WsClientError::TooManyReconnects);
         }
         self.reconnects -= 1;
 
@@ -381,15 +397,18 @@ impl RequestManager {
                 channel: tx,
             };
             // Need an entry in reqs to ensure response with new server sub ID is processed
-            self.reqs.insert(*id, in_flight);
+            // self.reqs.insert(*id, in_flight);
+            self.reqs.insert((*id).clone(), in_flight);
         }
 
         tracing::debug!(count = req_cnt, "Re-issuing pending requests");
         // reissue requests, including the re-subscription requests we just added above
-        for (id, req) in self.reqs.iter() {
+        // for (id, req) in self.reqs.iter() {
+        for (_id, req) in self.reqs.iter() {
             self.backend
                 .dispatcher
-                .unbounded_send(req.serialize_raw(*id)?)
+                // .unbounded_send(req.serialize_raw(*id)?)
+                .unbounded_send(req.serialize_raw(1)?)
                 .map_err(|_| WsClientError::DeadChannel)?;
         }
         tracing::info!(subs = self.subs.count(), reqs = req_cnt, "Re-connection complete");
@@ -398,21 +417,24 @@ impl RequestManager {
     }
 
     #[tracing::instrument(skip(self, result))]
-    fn req_success(&mut self, id: u64, result: Box<RawValue>) {
+    // fn req_success(&mut self, id: u64, result: Box<RawValue>) {
+    fn req_success(&mut self, id: String, result: Box<RawValue>) {
         // pending fut is missing, this is fine
         tracing::trace!(%result, "Success response received");
         if let Some(req) = self.reqs.remove(&id) {
             tracing::debug!("Sending result to request listener");
             // Allow subscription manager to rewrite the result if the request
             // corresponds to a known ID
-            let result = if self.subs.has(id) { self.subs.req_success(id, result) } else { result };
+            let result =
+                if self.subs.has(id.clone()) { self.subs.req_success(id, result) } else { result };
             let _ = req.channel.send(Ok(result));
         } else {
             tracing::trace!("No InFlight found");
         }
     }
 
-    fn req_fail(&mut self, id: u64, error: JsonRpcError) {
+    // fn req_fail(&mut self, id: u64, error: JsonRpcError) {
+    fn req_fail(&mut self, id: String, error: JsonRpcError) {
         // pending fut is missing, this is fine
         if let Some(req) = self.reqs.remove(&id) {
             // pending fut has been dropped, this is fine
@@ -431,18 +453,20 @@ impl RequestManager {
     #[tracing::instrument(skip(self, params, sender))]
     fn service_request(
         &mut self,
-        id: u64,
+        // id: u64,
+        id: String,
         method: String,
         params: Box<RawValue>,
         sender: oneshot::Sender<Response>,
     ) -> Result<(), WsClientError> {
         let in_flight = InFlight { method, params, channel: sender };
-        let req = in_flight.serialize_raw(id)?;
+        // let req = in_flight.serialize_raw(id)?;
+        let req = in_flight.serialize_raw(1)?;
 
         // Ordering matters here. We want this block above the unbounded send,
         // and after the serialization
         if in_flight.method == "eth_subscribe" {
-            self.subs.service_subscription_request(id, in_flight.params.clone())?;
+            self.subs.service_subscription_request(id.clone(), in_flight.params.clone())?;
         }
 
         // Must come after self.subs.service_subscription_request. Do not re-order
@@ -457,10 +481,11 @@ impl RequestManager {
         match instruction {
             Instruction::Request { method, params, sender } => {
                 let id = self.next_id();
-                self.service_request(id, method, params, sender)?;
+                self.service_request(id.to_string(), method, params, sender)?;
             }
             Instruction::Unsubscribe { id } => {
-                if let Some(req) = self.subs.end_subscription(id.low_u64()) {
+                // if let Some(req) = self.subs.end_subscription(id.low_u64()) {
+                if let Some(req) = self.subs.end_subscription(id) {
                     self.backend
                         .dispatcher
                         .unbounded_send(req)

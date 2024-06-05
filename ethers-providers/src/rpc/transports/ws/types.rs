@@ -1,5 +1,4 @@
 use crate::{common::Request, JsonRpcError};
-use ethers_core::types::U256;
 use futures_channel::{mpsc, oneshot};
 use serde::{de, Deserialize};
 use serde_json::value::{to_raw_value, RawValue};
@@ -9,7 +8,7 @@ use std::fmt;
 pub type Response = Result<Box<RawValue>, JsonRpcError>;
 
 #[derive(serde::Deserialize, serde::Serialize)]
-pub struct SubId(pub U256);
+pub struct SubId(pub String);
 
 impl SubId {
     pub(super) fn serialize_raw(&self) -> Result<Box<RawValue>, serde_json::Error> {
@@ -19,14 +18,16 @@ impl SubId {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Notification {
-    pub subscription: U256,
+    pub subscription: String,
     pub result: Box<RawValue>,
 }
 
 #[derive(Debug, Clone)]
 pub enum PubSubItem {
-    Success { id: u64, result: Box<RawValue> },
-    Error { id: u64, error: JsonRpcError },
+    // Success { id: u64, result: Box<RawValue> },
+    Success { id: String, result: Box<RawValue> },
+    // Error { id: u64, error: JsonRpcError },
+    Error { id: String, error: JsonRpcError },
     Notification { params: Notification },
 }
 
@@ -65,7 +66,7 @@ impl<'de> Deserialize<'de> for PubSubItem {
                     match key {
                         "jsonrpc" => {
                             if jsonrpc {
-                                return Err(de::Error::duplicate_field("jsonrpc"))
+                                return Err(de::Error::duplicate_field("jsonrpc"));
                             }
 
                             let value = map.next_value()?;
@@ -73,14 +74,14 @@ impl<'de> Deserialize<'de> for PubSubItem {
                                 return Err(de::Error::invalid_value(
                                     de::Unexpected::Str(value),
                                     &"2.0",
-                                ))
+                                ));
                             }
 
                             jsonrpc = true;
                         }
                         "id" => {
                             if id.is_some() {
-                                return Err(de::Error::duplicate_field("id"))
+                                return Err(de::Error::duplicate_field("id"));
                             }
 
                             let value: u64 = map.next_value()?;
@@ -88,7 +89,7 @@ impl<'de> Deserialize<'de> for PubSubItem {
                         }
                         "result" => {
                             if result.is_some() {
-                                return Err(de::Error::duplicate_field("result"))
+                                return Err(de::Error::duplicate_field("result"));
                             }
 
                             let value: Box<RawValue> = map.next_value()?;
@@ -96,7 +97,7 @@ impl<'de> Deserialize<'de> for PubSubItem {
                         }
                         "error" => {
                             if error.is_some() {
-                                return Err(de::Error::duplicate_field("error"))
+                                return Err(de::Error::duplicate_field("error"));
                             }
 
                             let value: JsonRpcError = map.next_value()?;
@@ -104,7 +105,7 @@ impl<'de> Deserialize<'de> for PubSubItem {
                         }
                         "method" => {
                             if method.is_some() {
-                                return Err(de::Error::duplicate_field("method"))
+                                return Err(de::Error::duplicate_field("method"));
                             }
 
                             let value: String = map.next_value()?;
@@ -112,7 +113,7 @@ impl<'de> Deserialize<'de> for PubSubItem {
                         }
                         "params" => {
                             if params.is_some() {
-                                return Err(de::Error::duplicate_field("params"))
+                                return Err(de::Error::duplicate_field("params"));
                             }
 
                             let value: Notification = map.next_value()?;
@@ -129,18 +130,18 @@ impl<'de> Deserialize<'de> for PubSubItem {
 
                 // jsonrpc version must be present in all responses
                 if !jsonrpc {
-                    return Err(de::Error::missing_field("jsonrpc"))
+                    return Err(de::Error::missing_field("jsonrpc"));
                 }
 
                 match (id, result, error, method, params) {
                     (Some(id), Some(result), None, None, None) => {
-                        Ok(PubSubItem::Success { id, result })
+                        Ok(PubSubItem::Success { id: id.to_string(), result })
                     }
                     (Some(id), None, Some(error), None, None) => {
-                        Ok(PubSubItem::Error { id, error })
+                        Ok(PubSubItem::Error { id: id.to_string(), error })
                     }
                     (Some(id), Some(_), Some(error), None, None) => {
-                        Ok(PubSubItem::Error { id, error })
+                        Ok(PubSubItem::Error { id: id.to_string(), error })
                     }
                     (None, None, None, Some(_), Some(params)) => {
                         Ok(PubSubItem::Notification { params })
@@ -221,7 +222,8 @@ impl InFlight {
 pub(super) struct ActiveSub {
     pub params: Box<RawValue>,
     pub channel: mpsc::UnboundedSender<Box<RawValue>>,
-    pub current_server_id: Option<U256>,
+    // pub current_server_id: Option<U256>,
+    pub current_server_id: Option<String>,
 }
 
 impl ActiveSub {
@@ -239,7 +241,8 @@ pub enum Instruction {
     /// JSON-RPC request
     Request { method: String, params: Box<RawValue>, sender: oneshot::Sender<Response> },
     /// Cancel an existing subscription
-    Unsubscribe { id: U256 },
+    // Unsubscribe { id: U256 },
+    Unsubscribe { id: String },
 }
 
 #[cfg(target_arch = "wasm32")]

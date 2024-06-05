@@ -16,7 +16,7 @@ pub use error::*;
 
 use crate::{JsonRpcClient, ProviderError, PubsubClient};
 use async_trait::async_trait;
-use ethers_core::types::U256;
+// use ethers_core::types::U256;
 use futures_channel::{mpsc, oneshot};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::value::{to_raw_value, RawValue};
@@ -125,16 +125,19 @@ impl JsonRpcClient for WsClient {
 impl PubsubClient for WsClient {
     type NotificationStream = mpsc::UnboundedReceiver<Box<RawValue>>;
 
-    fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, WsClientError> {
+    // fn subscribe<T: Into<U256>>(&self, id: T) -> Result<Self::NotificationStream, WsClientError> {
+    fn subscribe(&self, id: String) -> Result<Self::NotificationStream, WsClientError> {
         // due to the behavior of the request manager, we know this map has
         // been populated by the time the `request()` call returns
-        let id = id.into();
+        // let id = id.into();
         self.channel_map.lock().unwrap().remove(&id).ok_or(WsClientError::UnknownSubscription(id))
     }
 
-    fn unsubscribe<T: Into<U256>>(&self, id: T) -> Result<(), WsClientError> {
+    // fn unsubscribe<T: Into<U256>>(&self, id: T) -> Result<(), WsClientError> {
+    fn unsubscribe(&self, id: String) -> Result<(), WsClientError> {
         self.instructions
-            .unbounded_send(Instruction::Unsubscribe { id: id.into() })
+            // .unbounded_send(Instruction::Unsubscribe { id: id.into() })
+            .unbounded_send(Instruction::Unsubscribe { id })
             .map_err(|_| WsClientError::UnexpectedClose)
     }
 }
